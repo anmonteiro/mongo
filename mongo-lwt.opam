@@ -14,4 +14,7 @@ build-test: [
 depends: [
   "bson"
   "lwt"
+  "mongo"
+  "pbkdf"
+  "tls"
 ]

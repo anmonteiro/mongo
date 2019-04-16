@@ -1,3 +1,4 @@
+open Lwt.Infix
 open MongoUtils;;
 
 exception Mongo_failed of string;;
@@ -6,7 +7,7 @@ type t =
   {
     db_name: string;
     collection_name: string;
-    ip: string;
+    host: string;
     port: int;
     channel_pool : (Lwt_io.input_channel * Lwt_io.output_channel) Lwt_pool.t;
     max_connection : int ;
@@ -14,7 +15,7 @@ type t =
 
 let get_db_name m = m.db_name;;
 let get_collection_name m = m.collection_name;;
-let get_ip m = m.ip;;
+let get_host m = m.host;;
 let get_port m = m.port;;
 let get_channel_pool m = m.channel_pool;;
 let change_collection m c =
@@ -29,24 +30,39 @@ let wrap_bson f arg =
     | Bson.Malformed_bson -> raise (Mongo_failed "Malformed_bson when decoding bson");;
 
 let wrap_unix_lwt f arg =
-  try%lwt (f arg) with
-    | Unix.Unix_error (e, _, _) -> raise (Mongo_failed (Unix.error_message e));;
+  Lwt.catch (fun () -> f arg)
+  (function
+  | Unix.Unix_error (e, _, _) -> raise (Mongo_failed (Unix.error_message e))
+  | e -> raise e)
 
-let connect_to (ip,port) =
-  let s_addr = Lwt_unix.ADDR_INET (Unix.inet_addr_of_string ip,port) in
-  Lwt_io.open_connection s_addr
+let resolve host service =
+  Lwt_unix.getprotobyname "tcp" >>= fun tcp ->
+  Lwt_unix.getaddrinfo host service [AI_PROTOCOL tcp.p_proto] >>= function
+  | []    ->
+      let msg = Printf.sprintf "no address for %s:%s" host service in
+      Lwt.fail (Invalid_argument msg)
+  | ai::_ -> Lwt.return ai.ai_addr
 
-let create ?(max_connection=10) ip port db_name collection_name =
+let connect_to ssl (host,port) =
+  if ssl then
+    let open Lwt.Infix in
+    X509_lwt.authenticator `No_authentication_I'M_STUPID >>= fun authenticator ->
+      Tls_lwt.connect authenticator (host, port)
+  else
+    resolve host (string_of_int port) >>= fun s_addr ->
+      Lwt_io.open_connection s_addr
+
+let create ?(ssl=false) ?(auth=`NoAuth) ?(max_connection=10) host port db_name collection_name =
   let channel_pool = Lwt_pool.create max_connection (
       fun _ ->
-        wrap_unix_lwt connect_to (ip,port)
+        wrap_unix_lwt (connect_to ssl) (host,port)
     )
   in
-
+  MongoAuth_lwt.authenticate auth channel_pool >>= fun () ->
   Lwt.return {
     db_name = db_name;
     collection_name = collection_name;
-    ip = ip;
+    host = host;
     port = port;
     channel_pool ;
     max_connection ;
@@ -60,7 +76,7 @@ let destroy m =
   let close () =
     Lwt_pool.use m.channel_pool (
       fun (i,o) ->
-        let%lwt _ = wrap_unix_lwt Lwt_io.close i in
+        wrap_unix_lwt Lwt_io.close i >>= fun _ ->
         wrap_unix_lwt Lwt_io.close o
     )
     (* let i,o = m.channels in *)
@@ -118,7 +134,7 @@ let count ?skip ?limit ?(query=Bson.empty) m =
   in
 
   let m = change_collection m "$cmd" in
-  let%lwt r = find_q_one m c_bson in
+  find_q_one m c_bson >>= fun r ->
   let d = List.nth (MongoReply.get_document_list r) 0 in
   Lwt.return (int_of_float (Bson.get_double (Bson.get_element "n" d)))
 

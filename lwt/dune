@@ -1,7 +1,5 @@
 (library
-  (name mongo_lwt)
-  (public_name mongo-lwt)
-  (wrapped false)
-  (preprocess
-    (pps lwt_ppx))
-  (libraries mongo bson lwt lwt_ppx))
+ (name mongo_lwt)
+ (public_name mongo-lwt)
+ (wrapped false)
+ (libraries mongo bson lwt lwt.unix tls.lwt pbkdf))

@@ -17,7 +17,7 @@ type t;;
 
 val get_db_name: t -> string;;
 val get_collection_name: t -> string;;
-val get_ip: t -> string;;
+val get_host: t -> string;;
 val get_port: t -> int;;
 val get_channel_pool: t -> (Lwt_io.input_channel * Lwt_io.output_channel) Lwt_pool.t;;
 (* val get_channels: t -> (Lwt_io.input_channel * Lwt_io.output_channel);; *)

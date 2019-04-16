@@ -20,3 +20,4 @@ setup.log
 setup.data
 *.docdir
 .merlin
+*.install

@@ -1,0 +1,7 @@
+(executable
+ (libraries mongo-lwt tls.lwt bson pbkdf)
+ (name auth))
+
+(alias
+ (name DEFAULT)
+ (deps server.exe))

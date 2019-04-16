@@ -11,7 +11,7 @@ let admin_collection_name = "$cmd";;
 
 let get_db_name = Mongo_lwt.get_db_name;;
 let get_collection_name = Mongo_lwt.get_collection_name;;
-let get_ip = Mongo_lwt.get_ip;;
+let get_host = Mongo_lwt.get_host;;
 let get_port = Mongo_lwt.get_port;;
 let get_channel_pool = Mongo_lwt.get_channel_pool ;;
 (* let get_channels = Mongo_lwt.get_channels;; *)
@@ -25,8 +25,10 @@ let wrap_bson f arg =
     | Bson.Malformed_bson -> raise (MongoAdmin_failed "Malformed_bson when decoding bson");;
 
 let wrap_unix_lwt f arg =
-  try%lwt (f arg) with
-    | Unix.Unix_error (e, _, _) -> raise (MongoAdmin_failed (Unix.error_message e));;
+  Lwt.catch (fun () -> f arg)
+  (function
+  | Unix.Unix_error (e, _, _) -> raise (MongoAdmin_failed (Unix.error_message e))
+  | e -> raise e)
 
 let create ?max_connection ip port = Mongo_lwt.create ?max_connection ip port admin_db_name admin_collection_name;;
 let create_local_default () = create "127.0.0.1" 27017;;
